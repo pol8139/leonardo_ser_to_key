@@ -77,6 +77,7 @@ void setup(void) {
 	pinMode(SERIAL_DEBUG_PIN, INPUT_PULLUP);
 	Serial.begin(115200);
 	Wire.begin(); //このボードをI2Cマスターとして設定
+	Wire.setClock(400000L);
 	NKROKeyboard.begin();
 }
 
