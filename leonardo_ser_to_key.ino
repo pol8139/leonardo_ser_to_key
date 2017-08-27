@@ -1,4 +1,8 @@
 #include "HID-Project.h"
+#include <Wire.h>
+
+#define PSOC_I2C_SLAVE_ADDRESS 0x08
+#define BUFFER_SIZE 5
 
 #define CIRCLE KEY_K
 #define CROSS KEY_J
@@ -32,10 +36,10 @@
 #define TOUCH KEY_T
 #define PS KEY_Y
 
-#define CIRCLE_PIN 2
-#define CROSS_PIN 3
-#define SQUARE_PIN 4
-#define TRIANGLE_PIN 5
+#define CIRCLE_PIN 4
+#define CROSS_PIN 5
+#define SQUARE_PIN 6
+#define TRIANGLE_PIN 7
 
 #define TIMING_CHECK_PIN 8
 #define ENABLE_PIN 9
@@ -54,11 +58,15 @@ const int button_direct_pin_table[BUTTON_NUM] = {
 	TRIANGLE_PIN, SQUARE_PIN, CROSS_PIN, CIRCLE_PIN
 };
 
-uint8_t read_data_byte = 0;
-uint8_t button_data_byte = 0;
+unsigned char button_data_byte = 0;
 
-uint8_t readDirectlyConnectedButtons(void);
-void addHIDreportFromTable(uint8_t data_byte, KeyboardKeycode *button_table, int contents_of_table_num);
+int data_bytes_count = 0;
+unsigned char serial_data_byte[BUFFER_SIZE] = {};
+char c;
+
+unsigned char readDirectlyConnectedButtons(int *pin_table);
+void addHIDreportFromTable(unsigned char serial_data_byte, KeyboardKeycode *button_table, int contents_of_table_num);
+void sendRecievedI2CDataWithUART(unsigned char serial_data_byte[BUFFER_SIZE], int buffer_size);
 
 void setup(void) {
 	for(int i = 0; i < BUTTON_NUM; i++) {
@@ -66,19 +74,27 @@ void setup(void) {
 	}
 	pinMode(ENABLE_PIN, INPUT_PULLUP);
 	pinMode(TIMING_CHECK_PIN, OUTPUT);
-	Serial1.begin(115200);
+	Serial.begin(115200);
+	Wire.begin(); //このボードをI2Cマスターとして設定
 	NKROKeyboard.begin();
 }
 
 void loop(void) {
 	digitalWrite(TIMING_CHECK_PIN, 1);
 	if(!digitalRead(ENABLE_PIN)) {
-		read_data_byte = Serial1.read();
-		button_data_byte = readDirectlyConnectedButtons();
-		digitalWrite(TIMING_CHECK_PIN, 0);
-		if(read_data_byte != 0xFF) {	// シリアルで何らかの信号を受け取ったとき...
-			addHIDreportFromTable(read_data_byte, button_serial_table, 8);
+		data_bytes_count = 0;
+		for(int i = 0; i < BUFFER_SIZE; i++) {
+			serial_data_byte[i] = 0;
 		}
+		Wire.requestFrom(PSOC_I2C_SLAVE_ADDRESS, BUFFER_SIZE);
+		button_data_byte = readDirectlyConnectedButtons(button_direct_pin_table);
+		while(Wire.available() && data_bytes_count < BUFFER_SIZE) { // シリアルで何らかの信号を受け取ったとき...
+			serial_data_byte[data_bytes_count] = Wire.read();
+			data_bytes_count++;
+		}
+		sendRecievedI2CDataWithUART(serial_data_byte, BUFFER_SIZE);
+		digitalWrite(TIMING_CHECK_PIN, 0);
+		addHIDreportFromTable(serial_data_byte[0], button_serial_table, 8);
 		addHIDreportFromTable(button_data_byte, button_direct_table, BUTTON_NUM);
 	} else {
 		NKROKeyboard.releaseAll();
@@ -86,20 +102,36 @@ void loop(void) {
 	NKROKeyboard.send();
 }
 
-uint8_t readDirectlyConnectedButtons(void) {
-	uint8_t result = 0;
+unsigned char readDirectlyConnectedButtons(int *pin_table) {
+	unsigned char result = 0;
 	for(int i = 0; i < BUTTON_NUM; i++) {
-		result |= ((!digitalRead(button_direct_pin_table[i])) << (7 - i));
+		result |= ((!digitalRead(pin_table[i])) << (7 - i));
 	}
 	return result;
 }
 
-void addHIDreportFromTable(uint8_t data_byte, KeyboardKeycode *button_table, int contents_of_table_num) {
+void addHIDreportFromTable(unsigned char serial_data_byte, KeyboardKeycode *button_table, int contents_of_table_num) {
 	for(int i = 0; i < contents_of_table_num; i++) {
-		if((data_byte >> (7 - i)) & 0x01) {
+		if((serial_data_byte >> (7 - i)) & 0x01) {
 			NKROKeyboard.add(button_table[i]);
 		} else {
 			NKROKeyboard.remove(button_table[i]);
 		}
 	}
+}
+
+void sendRecievedI2CDataWithUART(unsigned char serial_data_byte[BUFFER_SIZE], int buffer_size) {
+	for(int i = 0; i < buffer_size; i++) {
+		for(int j = 0; j < 8; j++) {
+			if((serial_data_byte[i] >> (7 - j)) & 0x01) {
+				c = '@';
+			} else {
+				c = '_';
+			}
+			Serial.write(c);
+		}
+		Serial.write(' ');
+	}
+	Serial.write('\r');
+	Serial.write('\n');
 }
