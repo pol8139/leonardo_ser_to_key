@@ -43,6 +43,7 @@
 
 #define TIMING_CHECK_PIN 8
 #define ENABLE_PIN 9
+#define SERIAL_DEBUG_PIN 0
 
 #define BUTTON_NUM 4
 
@@ -62,7 +63,6 @@ unsigned char button_data_byte = 0;
 
 int data_bytes_count = 0;
 unsigned char serial_data_byte[BUFFER_SIZE] = {};
-char c;
 
 unsigned char readDirectlyConnectedButtons(int *pin_table);
 void addHIDreportFromTable(unsigned char serial_data_byte, KeyboardKeycode *button_table, int contents_of_table_num);
@@ -72,8 +72,9 @@ void setup(void) {
 	for(int i = 0; i < BUTTON_NUM; i++) {
 		pinMode(button_direct_pin_table[i], INPUT_PULLUP);
 	}
-	pinMode(ENABLE_PIN, INPUT_PULLUP);
 	pinMode(TIMING_CHECK_PIN, OUTPUT);
+	pinMode(ENABLE_PIN, INPUT_PULLUP);
+	pinMode(SERIAL_DEBUG_PIN, INPUT_PULLUP);
 	Serial.begin(115200);
 	Wire.begin(); //このボードをI2Cマスターとして設定
 	NKROKeyboard.begin();
@@ -92,7 +93,9 @@ void loop(void) {
 			serial_data_byte[data_bytes_count] = Wire.read();
 			data_bytes_count++;
 		}
-		sendRecievedI2CDataWithUART(serial_data_byte, BUFFER_SIZE);
+		if(!digitalRead(SERIAL_DEBUG_PIN)) {
+			sendRecievedI2CDataWithUART(serial_data_byte, BUFFER_SIZE);
+		}
 		digitalWrite(TIMING_CHECK_PIN, 0);
 		addHIDreportFromTable(serial_data_byte[0], button_serial_table, 8);
 		addHIDreportFromTable(button_data_byte, button_direct_table, BUTTON_NUM);
@@ -121,17 +124,24 @@ void addHIDreportFromTable(unsigned char serial_data_byte, KeyboardKeycode *butt
 }
 
 void sendRecievedI2CDataWithUART(unsigned char serial_data_byte[BUFFER_SIZE], int buffer_size) {
+	int len = BUFFER_SIZE * 9 + 2;
+	char c;
+	char send_data[len];
 	for(int i = 0; i < buffer_size; i++) {
-		for(int j = 0; j < 8; j++) {
-			if((serial_data_byte[i] >> (7 - j)) & 0x01) {
-				c = '@';
+		for(int j = 0; j < 9; j++) {
+			if(j < 8) {
+				if((serial_data_byte[i] >> (7 - j)) & 0x01) {
+					c = '@';
+				} else {
+					c = '_';
+				}
 			} else {
-				c = '_';
+				c = ' ';
 			}
-			Serial.write(c);
+			send_data[i * 9 + j] = c;
 		}
-		Serial.write(' ');
 	}
-	Serial.write('\r');
-	Serial.write('\n');
+	send_data[len - 2] = '\r';
+	send_data[len - 1] = '\n';
+	Serial.write(send_data, len);
 }
