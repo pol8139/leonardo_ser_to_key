@@ -42,8 +42,15 @@
 #define TRIANGLE_PIN 7
 
 #define TIMING_CHECK_PIN 8
-#define ENABLE_PIN 9
-#define SERIAL_DEBUG_PIN 0
+#define PWM_PIN 9
+#define SERIAL_DEBUG_PIN 10
+#define EXT_POWER_CHECK_PIN 14
+#define ENABLE_PIN 16
+
+#define CIRCLE_LED_PIN 18
+#define CROSS_LED_PIN 19
+#define SQUARE_LED_PIN 20
+#define TRIANGLE_LED_PIN 21
 
 #define BUTTON_NUM 4
 
