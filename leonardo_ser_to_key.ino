@@ -45,6 +45,7 @@
 #define PWM_PIN 9
 #define SERIAL_DEBUG_PIN 10
 #define EXT_POWER_CHECK_PIN 14
+#define START_PIN 15
 #define ENABLE_PIN 16
 
 #define CIRCLE_LED_PIN 18
@@ -52,18 +53,20 @@
 #define SQUARE_LED_PIN 20
 #define TRIANGLE_LED_PIN 21
 
-#define BUTTON_NUM 4
+#define BUTTON_NUM 5
 
 const KeyboardKeycode button_serial_table[8] = {
 	LU, LD, L2, R2, LL, LR, RL, RR
 };
 
 const KeyboardKeycode button_direct_table[8] = {
-	TRIANGLE, SQUARE, CROSS, CIRCLE, 0, 0, 0, 0
+	TRIANGLE, SQUARE, CROSS, CIRCLE, PS, 0, 0, 0
 };
 
+const unsigned char button_direct_logic = 0b00001000;
+
 const int button_direct_pin_table[BUTTON_NUM] = {
-	TRIANGLE_PIN, SQUARE_PIN, CROSS_PIN, CIRCLE_PIN
+	TRIANGLE_PIN, SQUARE_PIN, CROSS_PIN, CIRCLE_PIN, START_PIN
 };
 
 unsigned char button_data_byte = 0;
@@ -71,7 +74,7 @@ unsigned char button_data_byte = 0;
 int data_bytes_count = 0;
 unsigned char serial_data_byte[BUFFER_SIZE] = {};
 
-unsigned char readDirectlyConnectedButtons(int *pin_table);
+unsigned char readDirectlyConnectedButtons(int *pin_table, unsigned char pin_logic);
 void addHIDreportFromTable(unsigned char serial_data_byte, KeyboardKeycode *button_table, int contents_of_table_num);
 void sendRecievedI2CDataWithUART(unsigned char serial_data_byte[BUFFER_SIZE], int buffer_size);
 
@@ -96,7 +99,7 @@ void loop(void) {
 			serial_data_byte[i] = 0;
 		}
 		Wire.requestFrom(PSOC_I2C_SLAVE_ADDRESS, BUFFER_SIZE);
-		button_data_byte = readDirectlyConnectedButtons(button_direct_pin_table);
+		button_data_byte = readDirectlyConnectedButtons(button_direct_pin_table, button_direct_logic);
 		while(Wire.available() && data_bytes_count < BUFFER_SIZE) { // シリアルで何らかの信号を受け取ったとき...
 			serial_data_byte[data_bytes_count] = Wire.read();
 			data_bytes_count++;
@@ -113,12 +116,12 @@ void loop(void) {
 	NKROKeyboard.send();
 }
 
-unsigned char readDirectlyConnectedButtons(int *pin_table) {
+unsigned char readDirectlyConnectedButtons(int *pin_table, unsigned char pin_logic) {
 	unsigned char result = 0;
 	for(int i = 0; i < BUTTON_NUM; i++) {
-		result |= ((!digitalRead(pin_table[i])) << (7 - i));
+		result |= (digitalRead(pin_table[i]) << (7 - i));
 	}
-	return result;
+	return result ^ pin_logic;
 }
 
 void addHIDreportFromTable(unsigned char serial_data_byte, KeyboardKeycode *button_table, int contents_of_table_num) {
