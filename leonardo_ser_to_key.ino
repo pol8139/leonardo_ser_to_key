@@ -54,6 +54,7 @@
 #define TRIANGLE_LED_PIN 21
 
 #define BUTTON_NUM 5
+#define LED_NUM 4
 
 const KeyboardKeycode button_serial_table[8] = {
 	LU, LD, L2, R2, LL, LR, RL, RR
@@ -69,12 +70,17 @@ const int button_direct_pin_table[BUTTON_NUM] = {
 	TRIANGLE_PIN, SQUARE_PIN, CROSS_PIN, CIRCLE_PIN, START_PIN
 };
 
+const int led_direct_pin_table[LED_NUM] = {
+	TRIANGLE_LED_PIN, SQUARE_LED_PIN, CROSS_LED_PIN, CIRCLE_LED_PIN
+};
+
 unsigned char button_data_byte = 0;
 
 int data_bytes_count = 0;
 unsigned char serial_data_byte[BUFFER_SIZE] = {};
 
 unsigned char readDirectlyConnectedButtons(int *pin_table, unsigned char pin_logic);
+void writeDirectlyConnectedLEDs(int *led_table, unsigned char led_data_byte);
 void addHIDreportFromTable(unsigned char serial_data_byte, KeyboardKeycode *button_table, int contents_of_table_num);
 void sendRecievedI2CDataWithUART(unsigned char serial_data_byte[BUFFER_SIZE], int buffer_size);
 
@@ -82,9 +88,14 @@ void setup(void) {
 	for(int i = 0; i < BUTTON_NUM; i++) {
 		pinMode(button_direct_pin_table[i], INPUT_PULLUP);
 	}
+	for(int i = 0; i < LED_NUM; i++) {
+		pinMode(led_direct_pin_table[i], OUTPUT);
+	}
 	pinMode(TIMING_CHECK_PIN, OUTPUT);
 	pinMode(ENABLE_PIN, INPUT_PULLUP);
 	pinMode(SERIAL_DEBUG_PIN, INPUT_PULLUP);
+	pinMode(PWM_PIN, OUTPUT);
+	digitalWrite(PWM_PIN, HIGH);
 	Serial.begin(115200);
 	Wire.begin(); //このボードをI2Cマスターとして設定
 	Wire.setClock(400000L);
@@ -100,6 +111,7 @@ void loop(void) {
 		}
 		Wire.requestFrom(PSOC_I2C_SLAVE_ADDRESS, BUFFER_SIZE);
 		button_data_byte = readDirectlyConnectedButtons(button_direct_pin_table, button_direct_logic);
+		writeDirectlyConnectedLEDs(led_direct_pin_table, button_data_byte);
 		while(Wire.available() && data_bytes_count < BUFFER_SIZE) { // シリアルで何らかの信号を受け取ったとき...
 			serial_data_byte[data_bytes_count] = Wire.read();
 			data_bytes_count++;
@@ -122,6 +134,12 @@ unsigned char readDirectlyConnectedButtons(int *pin_table, unsigned char pin_log
 		result |= (digitalRead(pin_table[i]) << (7 - i));
 	}
 	return result ^ pin_logic;
+}
+
+void writeDirectlyConnectedLEDs(int *led_table, unsigned char led_data_byte) {
+	for(int i = 0; i < LED_NUM; i++) {
+		digitalWrite(led_table[i], !((led_data_byte >> (7 - i)) & 0x01));
+	}
 }
 
 void addHIDreportFromTable(unsigned char serial_data_byte, KeyboardKeycode *button_table, int contents_of_table_num) {
