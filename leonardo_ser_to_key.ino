@@ -2,39 +2,42 @@
 #include <Wire.h>
 
 #define PSOC_I2C_SLAVE_ADDRESS 0x08
+#define AVR_SLIDER_LED_I2C_SLAVE_ADDRESS_LEFT 0x10
+#define AVR_SLIDER_LED_I2C_SLAVE_ADDRESS_RIGHT 0x11
 #define BUFFER_SIZE 5
 
-#define CIRCLE KEY_K
-#define CROSS KEY_J
-#define SQUARE KEY_F
-#define TRIANGLE KEY_D
+#define CIRCLE 2
+#define CROSS 1
+#define SQUARE 3
+#define TRIANGLE 4
 
-#define LL KEY_E
-#define LR KEY_R
-#define RL KEY_U
-#define RR KEY_I
+#define LL 19
+#define LR 20
+#define RL 21
+#define RR 22
 
-#define LU KEY_UP_ARROW
-#define LD KEY_DOWN_ARROW
+#define LU 15
+#define LD 26
 
-#define UP KEY_UP_ARROW
-#define DOWN KEY_DOWN_ARROW
-#define LEFT KEY_LEFT_ARROW
-#define RIGHT KEY_RIGHT_ARROW
+// #define UP KEY_UP_ARROW
+// #define DOWN KEY_DOWN_ARROW
+// #define LEFT KEY_LEFT_ARROW
+// #define RIGHT KEY_RIGHT_ARROW
 
-#define L1 KEY_3
-#define L2 KEY_4
-#define R1 KEY_8
-#define R2 KEY_7
+#define L1 5
+#define R1 6
 
-#define L3 KEY_5
-#define R3 KEY_6
+#define L2 17
+#define R2 18
 
-#define SHARE KEY_G
-#define OPTION KEY_H
+#define L3 9
+#define R3 10
 
-#define TOUCH KEY_T
-#define PS KEY_Y
+#define SHARE 7
+#define OPTION 8
+
+#define TOUCH 14
+#define PS 13
 
 #define CIRCLE_PIN 4
 #define CROSS_PIN 5
@@ -56,11 +59,16 @@
 #define BUTTON_NUM 5
 #define LED_NUM 4
 
-const KeyboardKeycode button_serial_table[8] = {
+#define MIN16 -32768
+#define MAX16 32767
+#define MIN8 -128
+#define MAX8 127
+
+const unsigned char axis_serial_table[8] = {
 	LU, LD, L2, R2, LL, LR, RL, RR
 };
 
-const KeyboardKeycode button_direct_table[8] = {
+const unsigned char button_direct_table[8] = {
 	TRIANGLE, SQUARE, CROSS, CIRCLE, PS, 0, 0, 0
 };
 
@@ -81,7 +89,8 @@ unsigned char serial_data_byte[BUFFER_SIZE] = {};
 
 unsigned char readDirectlyConnectedButtons(int *pin_table, unsigned char pin_logic);
 void writeDirectlyConnectedLEDs(int *led_table, unsigned char led_data_byte);
-void addHIDreportFromTable(unsigned char serial_data_byte, KeyboardKeycode *button_table, int contents_of_table_num);
+void addHIDaxisReportFromTable(unsigned char serial_data_byte, unsigned char *button_table, int contents_of_table_num);
+void addHIDreportFromTable(unsigned char serial_data_byte, unsigned char *button_table, int contents_of_table_num);
 void sendRecievedI2CDataWithUART(unsigned char serial_data_byte[BUFFER_SIZE], int buffer_size);
 
 void setup(void) {
@@ -94,12 +103,13 @@ void setup(void) {
 	pinMode(TIMING_CHECK_PIN, OUTPUT);
 	pinMode(ENABLE_PIN, INPUT_PULLUP);
 	pinMode(SERIAL_DEBUG_PIN, INPUT_PULLUP);
-	pinMode(PWM_PIN, OUTPUT);
-	digitalWrite(PWM_PIN, HIGH);
+	// pinMode(PWM_PIN, OUTPUT);
+	// digitalWrite(PWM_PIN, HIGH);
+	analogWrite(PWM_PIN, 255);
 	Serial.begin(115200);
 	Wire.begin(); //このボードをI2Cマスターとして設定
 	Wire.setClock(400000L);
-	NKROKeyboard.begin();
+	Gamepad.begin();
 }
 
 void loop(void) {
@@ -119,13 +129,21 @@ void loop(void) {
 		if(!digitalRead(SERIAL_DEBUG_PIN)) {
 			sendRecievedI2CDataWithUART(serial_data_byte, BUFFER_SIZE);
 		}
+		Wire.beginTransmission(AVR_SLIDER_LED_I2C_SLAVE_ADDRESS_LEFT);
+		Wire.write(serial_data_byte[1]);
+		Wire.write(serial_data_byte[2]);
+		Wire.endTransmission();
+		Wire.beginTransmission(AVR_SLIDER_LED_I2C_SLAVE_ADDRESS_RIGHT);
+		Wire.write(serial_data_byte[3]);
+		Wire.write(serial_data_byte[4]);
+		Wire.endTransmission();
 		digitalWrite(TIMING_CHECK_PIN, 0);
-		addHIDreportFromTable(serial_data_byte[0], button_serial_table, 8);
+		addHIDaxisReportFromTable(serial_data_byte[0], axis_serial_table, 8);
 		addHIDreportFromTable(button_data_byte, button_direct_table, BUTTON_NUM);
 	} else {
-		NKROKeyboard.releaseAll();
+		Gamepad.releaseAll();
 	}
-	NKROKeyboard.send();
+	Gamepad.write();
 }
 
 unsigned char readDirectlyConnectedButtons(int *pin_table, unsigned char pin_logic) {
@@ -142,12 +160,45 @@ void writeDirectlyConnectedLEDs(int *led_table, unsigned char led_data_byte) {
 	}
 }
 
-void addHIDreportFromTable(unsigned char serial_data_byte, KeyboardKeycode *button_table, int contents_of_table_num) {
+void addHIDaxisReportFromTable(unsigned char serial_data_byte, unsigned char *button_table, int contents_of_table_num) {
+	Gamepad.xAxis(0);
+	Gamepad.yAxis(0);
+	Gamepad.zAxis(0);
+	Gamepad.rxAxis(0);
+	Gamepad.ryAxis(0);
+	Gamepad.rzAxis(0);
+	if((serial_data_byte >> 7) & 0x01) {
+		Gamepad.yAxis(MIN16);
+	}
+	if((serial_data_byte >> 6) & 0x01) {
+		Gamepad.yAxis(MAX16);
+	}
+	if((serial_data_byte >> 5) & 0x01) {
+		Gamepad.zAxis(MIN8);
+	}
+	if((serial_data_byte >> 4) & 0x01) {
+		Gamepad.zAxis(MIN8);
+	}
+	if((serial_data_byte >> 3) & 0x01) {
+		Gamepad.xAxis(MIN16);
+	}
+	if((serial_data_byte >> 2) & 0x01) {
+		Gamepad.xAxis(MAX16);
+	}
+	if((serial_data_byte >> 1) & 0x01) {
+		Gamepad.rxAxis(MIN16);
+	}
+	if((serial_data_byte >> 0) & 0x01) {
+		Gamepad.rxAxis(MAX16);
+	}
+}
+
+void addHIDreportFromTable(unsigned char serial_data_byte, unsigned char *button_table, int contents_of_table_num) {
 	for(int i = 0; i < contents_of_table_num; i++) {
 		if((serial_data_byte >> (7 - i)) & 0x01) {
-			NKROKeyboard.add(button_table[i]);
+			Gamepad.press(button_table[i]);
 		} else {
-			NKROKeyboard.remove(button_table[i]);
+			Gamepad.release(button_table[i]);
 		}
 	}
 }
@@ -174,3 +225,4 @@ void sendRecievedI2CDataWithUART(unsigned char serial_data_byte[BUFFER_SIZE], in
 	send_data[len - 1] = '\n';
 	Serial.write(send_data, len);
 }
+#define LU button19
