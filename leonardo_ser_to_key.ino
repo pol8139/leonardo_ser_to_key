@@ -1,9 +1,8 @@
 #include "HID-Project.h"
+#include "Adafruit_NeoPixel.h"
 #include <Wire.h>
 
 #define PSOC_I2C_SLAVE_ADDRESS 0x08
-#define AVR_SLIDER_LED_I2C_SLAVE_ADDRESS_LEFT 0x10
-#define AVR_SLIDER_LED_I2C_SLAVE_ADDRESS_RIGHT 0x11
 #define BUFFER_SIZE 5
 
 #define CIRCLE 2
@@ -44,6 +43,7 @@
 #define SQUARE_PIN 6
 #define TRIANGLE_PIN 7
 
+#define LED_STRIP_PIN 0
 #define TIMING_CHECK_PIN 8
 #define PWM_PIN 9
 #define SERIAL_DEBUG_PIN 10
@@ -58,6 +58,7 @@
 
 #define BUTTON_NUM 5
 #define LED_NUM 4
+#define LED_STRIP_NUM 30
 
 #define MIN16 -32768
 #define MAX16 32767
@@ -87,6 +88,9 @@ unsigned char button_data_byte = 0;
 int data_bytes_count = 0;
 unsigned char serial_data_byte[BUFFER_SIZE] = {};
 
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(LED_STRIP_NUM, LED_STRIP_PIN, NEO_GRB + NEO_KHZ800);
+
+void selfTestLEDs(void);
 unsigned char readDirectlyConnectedButtons(int *pin_table, unsigned char pin_logic);
 void writeDirectlyConnectedLEDs(int *led_table, unsigned char led_data_byte);
 void addHIDaxisReportFromTable(unsigned char serial_data_byte, unsigned char *button_table, int contents_of_table_num);
@@ -110,6 +114,10 @@ void setup(void) {
 	Wire.begin(); //このボードをI2Cマスターとして設定
 	Wire.setClock(400000L);
 	Gamepad.begin();
+	strip.begin();
+	strip.setBrightness(128);
+	strip.show();
+	selfTestLEDs();
 }
 
 void loop(void) {
@@ -129,21 +137,47 @@ void loop(void) {
 		if(!digitalRead(SERIAL_DEBUG_PIN)) {
 			sendRecievedI2CDataWithUART(serial_data_byte, BUFFER_SIZE);
 		}
-		Wire.beginTransmission(AVR_SLIDER_LED_I2C_SLAVE_ADDRESS_LEFT);
-		Wire.write(serial_data_byte[1]);
-		Wire.write(serial_data_byte[2]);
-		Wire.endTransmission();
-		Wire.beginTransmission(AVR_SLIDER_LED_I2C_SLAVE_ADDRESS_RIGHT);
-		Wire.write(serial_data_byte[3]);
-		Wire.write(serial_data_byte[4]);
-		Wire.endTransmission();
-		digitalWrite(TIMING_CHECK_PIN, 0);
 		addHIDaxisReportFromTable(serial_data_byte[0], axis_serial_table, 8);
 		addHIDreportFromTable(button_data_byte, button_direct_table, BUTTON_NUM);
+		int touched = 0;
+		for(int i = 0; i < BUFFER_SIZE - 1; i++) {
+			for(int j = 0; j < 8; j++) {
+				if((serial_data_byte[i + 1] >> (7 - j)) & 0x01) {
+					strip.setPixelColor(i * 8 + j, 0x80, 0xFF, 0xCC);
+					touched = 1;
+				} else {
+					strip.setPixelColor(i * 8 + j, 0x0E, 0x10, 0x10);
+				}
+			}
+		}
+		if(touched == 0) {
+			for(int i = 0; i < LED_STRIP_NUM; i++) {
+				strip.setPixelColor(i, 0x1C, 0x20, 0x20);
+			}
+		}
+		digitalWrite(TIMING_CHECK_PIN, 0);
 	} else {
 		Gamepad.releaseAll();
 	}
+	strip.show();
 	Gamepad.write();
+}
+
+void selfTestLEDs(void) {
+	unsigned char data_byte;
+	for(int i = 0; i < LED_NUM + 1; i++) {
+		data_byte = 0x01 << (7 - i);
+		writeDirectlyConnectedLEDs(led_direct_pin_table, data_byte);
+		delay(200);
+	}
+	for(int i = 0; i < LED_STRIP_NUM; i++) {
+		for(int j = 0; j < LED_STRIP_NUM; j++) {
+			strip.setPixelColor(j, 0);
+		}
+		strip.setPixelColor(i, 0xFF, 0xFF, 0xFF);
+		strip.show();
+		delay(50);
+	}
 }
 
 unsigned char readDirectlyConnectedButtons(int *pin_table, unsigned char pin_logic) {
