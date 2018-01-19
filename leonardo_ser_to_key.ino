@@ -18,11 +18,6 @@
 #define LU 15
 #define LD 26
 
-// #define UP KEY_UP_ARROW
-// #define DOWN KEY_DOWN_ARROW
-// #define LEFT KEY_LEFT_ARROW
-// #define RIGHT KEY_RIGHT_ARROW
-
 #define L1 5
 #define R1 6
 
@@ -259,4 +254,3 @@ void sendRecievedI2CDataWithUART(unsigned char serial_data_byte[BUFFER_SIZE], in
 	send_data[len - 1] = '\n';
 	Serial.write(send_data, len);
 }
-#define LU button19
